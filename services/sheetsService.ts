@@ -64,7 +64,8 @@ export const initGapi = async () => {
           await (window as any).gapi.client.init({
             apiKey: GOOGLE_API_KEY,
             discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],
-            // Note: clientId and scope are purposely REMOVED from here for the new flow
+            // Adding plugin_name back as it sometimes fixes obscure init errors
+            plugin_name: "AleaManager" 
           });
           gapiInited = true;
           resolve();
