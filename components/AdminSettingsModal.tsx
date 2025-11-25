@@ -26,7 +26,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
 }) => {
   const isAdmin = currentUser.Reparto === 'Admin';
   const [activeTab, setActiveTab] = useState<'operators' | 'clients' | 'cloud'>(isAdmin ? 'operators' : 'clients');
-  const [googleUser, setGoogleUser] = useState<boolean>(isSignedIn());
+  const [googleUser, setGoogleUser] = useState<boolean>(false);
   
   // State Operatori
   const [newOpName, setNewOpName] = useState('');
@@ -46,8 +46,16 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
       try {
           await signIn();
           setGoogleUser(true);
-      } catch (e) {
-          alert("Login fallito");
+          // Auto sync after login
+          onManualSync();
+      } catch (e: any) {
+          console.error("Login Error UI", e);
+          let msg = "Errore sconosciuto.";
+          if (e.error) msg = e.error;
+          else if (e.message) msg = e.message;
+          else if (typeof e === 'string') msg = e;
+          
+          alert(`Login fallito: ${msg}\n\nNota: Se vedi 'idpiframe_initialization_failed', verifica le Origini Autorizzate su Google Cloud Console.`);
       }
   };
 
@@ -147,20 +155,20 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
             {isAdmin && (
               <button 
                   onClick={() => setActiveTab('operators')}
-                  className={`flex-1 py-3 font-medium text-sm flex items-center justify-center gap-2 transition-colors ${activeTab === 'operators' ? 'text-alea-600 border-b-2 border-alea-600 bg-gray-50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                  className={`flex-1 py-3 font-medium text-sm flex items-center justify-center gap-2 transition-colors ${activeTab === 'operators' ? 'text-alea-600 border-b-2 border-alea-600 bg-gray-50' : 'text-gray-500 text-gray-900 hover:text-gray-900 hover:bg-gray-50'}`}
               >
                   <Users size={16} /> Operatori
               </button>
             )}
             <button 
                 onClick={() => setActiveTab('clients')}
-                className={`flex-1 py-3 font-medium text-sm flex items-center justify-center gap-2 transition-colors ${activeTab === 'clients' ? 'text-alea-600 border-b-2 border-alea-600 bg-gray-50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                className={`flex-1 py-3 font-medium text-sm flex items-center justify-center gap-2 transition-colors ${activeTab === 'clients' ? 'text-alea-600 border-b-2 border-alea-600 bg-gray-50' : 'text-gray-500 text-gray-900 hover:text-gray-900 hover:bg-gray-50'}`}
             >
                 <Building size={16} /> Clienti
             </button>
             <button 
                 onClick={() => setActiveTab('cloud')}
-                className={`flex-1 py-3 font-medium text-sm flex items-center justify-center gap-2 transition-colors ${activeTab === 'cloud' ? 'text-alea-600 border-b-2 border-alea-600 bg-gray-50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                className={`flex-1 py-3 font-medium text-sm flex items-center justify-center gap-2 transition-colors ${activeTab === 'cloud' ? 'text-alea-600 border-b-2 border-alea-600 bg-gray-50' : 'text-gray-500 text-gray-900 hover:text-gray-900 hover:bg-gray-50'}`}
             >
                 <Cloud size={16} /> Cloud Sync
             </button>
@@ -209,11 +217,11 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-gray-100 text-gray-700 font-semibold uppercase text-xs">
                                     <tr>
-                                        <th className="p-3 border-b border-gray-200">ID</th>
-                                        <th className="p-3 border-b border-gray-200">Nome</th>
-                                        <th className="p-3 border-b border-gray-200">Reparto</th>
-                                        <th className="p-3 border-b border-gray-200">Email</th>
-                                        <th className="p-3 border-b border-gray-200 text-right">Azioni</th>
+                                        <th className="p-3 border-b border-gray-200 text-gray-900">ID</th>
+                                        <th className="p-3 border-b border-gray-200 text-gray-900">Nome</th>
+                                        <th className="p-3 border-b border-gray-200 text-gray-900">Reparto</th>
+                                        <th className="p-3 border-b border-gray-200 text-gray-900">Email</th>
+                                        <th className="p-3 border-b border-gray-200 text-gray-900 text-right">Azioni</th>
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white">
@@ -295,10 +303,10 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-gray-100 text-gray-700 font-semibold uppercase text-xs">
                                     <tr>
-                                        <th className="p-3 border-b border-gray-200">Nome / Ragione Sociale</th>
-                                        <th className="p-3 border-b border-gray-200">Email</th>
-                                        <th className="p-3 border-b border-gray-200">Telefono</th>
-                                        <th className="p-3 border-b border-gray-200 text-right">Azioni</th>
+                                        <th className="p-3 border-b border-gray-200 text-gray-900">Nome / Ragione Sociale</th>
+                                        <th className="p-3 border-b border-gray-200 text-gray-900">Email</th>
+                                        <th className="p-3 border-b border-gray-200 text-gray-900">Telefono</th>
+                                        <th className="p-3 border-b border-gray-200 text-gray-900 text-right">Azioni</th>
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white">
