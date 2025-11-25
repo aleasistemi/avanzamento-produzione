@@ -1,63 +1,151 @@
+
 import { GOOGLE_CLIENT_ID, GOOGLE_API_KEY, SPREADSHEET_ID, SCOPES } from '../constants';
 import { Commessa, Operatore, Cliente, FaseProduzione } from '../types';
 
+// Global state for API clients
+let tokenClient: any;
+let accessToken: string | null = null;
 let gapiInited = false;
-let gapiInstance: any = null;
+let gisInited = false;
 
+/**
+ * Loads the Google Identity Services script dynamically
+ */
+const loadGisScript = (): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    if ((window as any).google?.accounts) {
+      resolve();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = (e) => reject(new Error("Failed to load GIS script"));
+    document.body.appendChild(script);
+  });
+};
+
+/**
+ * Loads the Google API script dynamically
+ */
+const loadGapiScript = (): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    if ((window as any).gapi) {
+      resolve();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://apis.google.com/js/api.js';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = (e) => reject(new Error("Failed to load GAPI script"));
+    document.body.appendChild(script);
+  });
+};
+
+/**
+ * Initialize both GAPI (for requests) and GIS (for auth)
+ * MIGRATION NOTE: We strictly separate GAPI client init from Auth flow.
+ */
 export const initGapi = async () => {
-  if (gapiInited && (window as any).gapi && (window as any).gapi.auth2) return true;
+  if (gapiInited && gisInited) return true;
+
+  try {
+    // 1. Load Scripts
+    await Promise.all([loadGapiScript(), loadGisScript()]);
+
+    // 2. Initialize GAPI Client (Requests only, NO AUTH here)
+    await new Promise<void>((resolve, reject) => {
+      (window as any).gapi.load('client', async () => {
+        try {
+          await (window as any).gapi.client.init({
+            apiKey: GOOGLE_API_KEY,
+            discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],
+            // Note: clientId and scope are purposely REMOVED from here for the new flow
+          });
+          gapiInited = true;
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+
+    // 3. Initialize GIS Token Client (Auth only)
+    tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: SCOPES,
+      callback: (tokenResponse: any) => {
+        // This callback is defined here but overridden/handled in signIn
+        if (tokenResponse && tokenResponse.access_token) {
+          accessToken = tokenResponse.access_token;
+        }
+      },
+    });
+    gisInited = true;
+    
+    // Check if we have a stored token in localStorage to restore session
+    const storedToken = localStorage.getItem('google_access_token');
+    if (storedToken) {
+        // We can't validate it easily without a call, but we set it optimistically
+        (window as any).gapi.client.setToken({ access_token: storedToken });
+        accessToken = storedToken;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Initialization Error:", error);
+    throw error;
+  }
+};
+
+/**
+ * Triggers the Google Login Popup using the new GIS library
+ */
+export const signIn = async (): Promise<void> => {
+  if (!gisInited || !tokenClient) await initGapi();
 
   return new Promise((resolve, reject) => {
-    const initClient = async () => {
-      try {
-        await (window as any).gapi.client.init({
-          apiKey: GOOGLE_API_KEY,
-          clientId: GOOGLE_CLIENT_ID,
-          discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],
-          scope: SCOPES,
-          plugin_name: "AleaProduction" // CRITICAL FIX for "Login Failed" errors
-        });
-        gapiInstance = (window as any).gapi.auth2.getAuthInstance();
-        gapiInited = true;
-        resolve(true);
-      } catch (error: any) {
-        console.error("Error initializing GAPI Client:", error);
-        // Extract specific error details if available
-        const errorMsg = error.details || error.error || JSON.stringify(error);
-        reject(new Error(`GAPI Init Failed: ${errorMsg}`));
-      }
-    };
+    try {
+      // Override callback to capture the promise resolution
+      tokenClient.callback = (resp: any) => {
+        if (resp.error) {
+          reject(resp);
+          return;
+        }
+        accessToken = resp.access_token;
+        // Store for persistence
+        localStorage.setItem('google_access_token', accessToken!);
+        // IMPORTANT: Set the token for GAPI client to use in requests
+        (window as any).gapi.client.setToken(resp);
+        resolve();
+      };
 
-    if ((window as any).gapi) {
-      (window as any).gapi.load('client:auth2', initClient);
-    } else {
-      const script = document.createElement('script');
-      script.src = 'https://apis.google.com/js/api.js';
-      script.async = true;
-      script.defer = true;
-      script.onload = () => {
-        (window as any).gapi.load('client:auth2', initClient);
-      };
-      script.onerror = (e) => {
-        reject(new Error("Failed to load Google API script. Check your connection."));
-      };
-      document.body.appendChild(script);
+      // Trigger popup
+      tokenClient.requestAccessToken({ prompt: 'consent' });
+    } catch (e) {
+      reject(e);
     }
   });
 };
 
-export const signIn = async () => {
-  if (!gapiInstance) await initGapi();
-  return gapiInstance.signIn();
-};
-
 export const signOut = async () => {
-  if (!gapiInstance) await initGapi();
-  return gapiInstance.signOut();
+  const token = (window as any).gapi?.client?.getToken();
+  if (token !== null) {
+    (window as any).google.accounts.oauth2.revoke(token.access_token, () => {
+      console.log('Revoked: ' + token.access_token);
+      (window as any).gapi.client.setToken('');
+      accessToken = null;
+      localStorage.removeItem('google_access_token');
+    });
+  }
 };
 
 export const isSignedIn = () => {
-  return gapiInstance && gapiInstance.isSignedIn.get();
+  return !!accessToken;
 };
 
 // --- DATA MAPPING HELPERS ---
@@ -128,18 +216,14 @@ const logToRow = (l: FaseProduzione) => [
 // --- API ACTIONS ---
 
 export const fetchAllData = async () => {
-    // Retry logic specifically for GAPI not ready
-    if (!gapiInstance) {
-        try {
-            await initGapi();
-        } catch (e) {
-            console.error("Auto-init failed during fetch", e);
-            // Fallback to empty if init fails hard
-            return { commesse: [], operatori: [], clienti: [], logs: [] };
-        }
+    if (!gapiInited) await initGapi();
+    
+    // If we have a token but gapi client doesn't know about it yet (refresh case)
+    if (accessToken && !(window as any).gapi.client.getToken()) {
+        (window as any).gapi.client.setToken({ access_token: accessToken });
     }
 
-    if (!isSignedIn()) {
+    if (!accessToken) {
       console.warn("User not signed in, skipping fetch.");
       return { commesse: [], operatori: [], clienti: [], logs: [] };
     }
@@ -159,7 +243,14 @@ export const fetchAllData = async () => {
           clienti: (valueRanges[2].values || []).map(rowToCliente),
           logs: (valueRanges[3].values || []).map(rowToLog),
       };
-    } catch (error) {
+    } catch (error: any) {
+      // Handle Token Expiration
+      if (error.result?.error?.code === 401 || error.result?.error?.status === 'UNAUTHENTICATED') {
+          console.log("Token expired, clearing session.");
+          localStorage.removeItem('google_access_token');
+          accessToken = null;
+          throw new Error("Sessione scaduta. Riconnetti Google Drive.");
+      }
       console.error("Error fetching data from Sheets:", error);
       throw error;
     }
@@ -171,7 +262,7 @@ export const saveAllData = async (
     clienti: Cliente[], 
     logs: FaseProduzione[]
 ) => {
-    if (!isSignedIn()) throw new Error("Utente non connesso a Google");
+    if (!accessToken) throw new Error("Utente non connesso a Google");
 
     const data = [
         { range: 'Commesse!A2:R', values: commesse.map(commessaToRow) },
@@ -190,7 +281,7 @@ export const saveAllData = async (
 };
 
 export const initializeSheetHeaders = async () => {
-    if (!isSignedIn()) throw new Error("Utente non connesso a Google");
+    if (!accessToken) throw new Error("Utente non connesso a Google");
 
     const headers = [
         { range: 'Commesse!A1:R1', values: [["CommessaID", "Codice", "Cliente", "Categoria", "Priorita", "DataStimataConsegna", "OperatoreAssegnato", "RepartoResponsabile", "StatoAvanzamento", "DataInserimento", "DataPresaInCarico", "DataFinePrevista", "MaterialiMancanti", "NoteTecniche", "TempoStimatoOre", "StatoCompletamento", "ColoreCalcolato", "Bloccata"]] },
