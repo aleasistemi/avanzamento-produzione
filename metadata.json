@@ -1,0 +1,5 @@
+{
+  "name": "Alea Production Manager",
+  "description": "Intelligent production management system for Alea Sistemi using Google Sheets data and Gemini AI.",
+  "requestFramePermissions": []
+}
