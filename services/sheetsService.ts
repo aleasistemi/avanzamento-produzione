@@ -48,7 +48,6 @@ const loadGapiScript = (): Promise<void> => {
 
 /**
  * Initialize both GAPI (for requests) and GIS (for auth)
- * MIGRATION NOTE: We strictly separate GAPI client init from Auth flow.
  */
 export const initGapi = async () => {
   if (gapiInited && gisInited) return true;
@@ -80,7 +79,6 @@ export const initGapi = async () => {
       client_id: GOOGLE_CLIENT_ID,
       scope: SCOPES,
       callback: (tokenResponse: any) => {
-        // This callback is defined here but overridden/handled in signIn
         if (tokenResponse && tokenResponse.access_token) {
           accessToken = tokenResponse.access_token;
         }
@@ -111,21 +109,16 @@ export const signIn = async (): Promise<void> => {
 
   return new Promise((resolve, reject) => {
     try {
-      // Override callback to capture the promise resolution
       tokenClient.callback = (resp: any) => {
         if (resp.error) {
           reject(resp);
           return;
         }
         accessToken = resp.access_token;
-        // Store for persistence
         localStorage.setItem('google_access_token', accessToken!);
-        // IMPORTANT: Set the token for GAPI client to use in requests
         (window as any).gapi.client.setToken(resp);
         resolve();
       };
-
-      // Trigger popup
       tokenClient.requestAccessToken({ prompt: 'consent' });
     } catch (e) {
       reject(e);
@@ -219,7 +212,7 @@ const logToRow = (l: FaseProduzione) => [
 export const fetchAllData = async () => {
     if (!gapiInited) await initGapi();
     
-    // If we have a token but gapi client doesn't know about it yet (refresh case)
+    // Refresh token check
     if (accessToken && !(window as any).gapi.client.getToken()) {
         (window as any).gapi.client.setToken({ access_token: accessToken });
     }
@@ -245,7 +238,6 @@ export const fetchAllData = async () => {
           logs: (valueRanges[3].values || []).map(rowToLog),
       };
     } catch (error: any) {
-      // Handle Token Expiration
       if (error.result?.error?.code === 401 || error.result?.error?.status === 'UNAUTHENTICATED') {
           console.log("Token expired, clearing session.");
           localStorage.removeItem('google_access_token');
@@ -264,7 +256,20 @@ export const saveAllData = async (
     logs: FaseProduzione[]
 ) => {
     if (!accessToken) throw new Error("Utente non connesso a Google");
+    
+    // Ensure we are using the correct token
+    if (!(window as any).gapi.client.getToken()) {
+         (window as any).gapi.client.setToken({ access_token: accessToken });
+    }
 
+    // 1. CLEAR existing data to avoid ghost rows
+    const clearRanges = ['Commesse!A2:R', 'Operatori!A2:F', 'Clienti!A2:D', 'Logs!A2:H'];
+    await (window as any).gapi.client.sheets.spreadsheets.values.batchClear({
+        spreadsheetId: SPREADSHEET_ID,
+        resource: { ranges: clearRanges }
+    });
+
+    // 2. WRITE new data
     const data = [
         { range: 'Commesse!A2:R', values: commesse.map(commessaToRow) },
         { range: 'Operatori!A2:F', values: operatori.map(operatoreToRow) },
