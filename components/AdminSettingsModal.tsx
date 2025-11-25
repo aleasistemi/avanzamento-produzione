@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Operatore, Cliente } from '../types';
-import { X, Plus, Trash2, Save, Settings, Users, Building, Pencil, Cloud, LogIn, Database, RefreshCw } from 'lucide-react';
+import { X, Plus, Trash2, Save, Settings, Users, Building, Pencil, Cloud, LogIn, Database, RefreshCw, ExternalLink, AlertTriangle } from 'lucide-react';
 import { signIn, signOut, isSignedIn, initializeSheetHeaders } from '../services/sheetsService';
 
 interface AdminSettingsModalProps {
@@ -28,6 +28,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
   const isAdmin = currentUser.Reparto === 'Admin';
   const [activeTab, setActiveTab] = useState<'operators' | 'clients' | 'cloud'>(isAdmin ? 'operators' : 'clients');
   const [googleUser, setGoogleUser] = useState<boolean>(false);
+  const [isIframe, setIsIframe] = useState(false);
   
   // State Operatori
   const [newOpName, setNewOpName] = useState('');
@@ -39,11 +40,21 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check google auth status occasionally
+    // Check google auth status
     setGoogleUser(isSignedIn());
+    // Check if running in iframe
+    try {
+        setIsIframe(window.self !== window.top);
+    } catch (e) {
+        setIsIframe(true);
+    }
   }, []);
 
   const handleGoogleLogin = async () => {
+      if (isIframe) {
+          alert("Per motivi di sicurezza, Google non permette il login nell'anteprima. Apri il sito in una nuova scheda.");
+          return;
+      }
       try {
           await signIn();
           setGoogleUser(true);
@@ -138,6 +149,10 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
     if (window.confirm('Eliminare questo cliente?')) {
       setClients(prev => prev.filter(c => c.ID !== id));
     }
+  };
+
+  const openInNewTab = () => {
+      window.open(window.location.href, '_blank');
   };
 
   return (
@@ -349,6 +364,22 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
             {/* --- CLOUD SYNC TAB --- */}
             {activeTab === 'cloud' && (
                 <div className="space-y-6 flex flex-col items-center justify-center h-full">
+                    {isIframe && (
+                        <div className="w-full bg-red-50 border border-red-200 rounded-lg p-4 mb-2 flex flex-col items-center text-center">
+                             <AlertTriangle className="text-red-600 mb-2" size={32} />
+                             <h4 className="font-bold text-red-800">Login Google bloccato</h4>
+                             <p className="text-sm text-red-700 mb-3">
+                                 Google non permette l'accesso in modalità anteprima (iframe).
+                             </p>
+                             <button 
+                                onClick={openInNewTab}
+                                className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-red-700 flex items-center gap-2"
+                             >
+                                <ExternalLink size={16} /> APRI IN UNA NUOVA SCHEDA
+                             </button>
+                        </div>
+                    )}
+
                     <div className="text-center space-y-2">
                         <div className="bg-blue-50 p-4 rounded-full inline-block mb-2">
                             <Cloud size={48} className="text-alea-600" />
@@ -361,7 +392,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
 
                     <div className="flex flex-col gap-4 w-full max-w-xs">
                         {!googleUser ? (
-                            <button onClick={handleGoogleLogin} className="flex items-center justify-center gap-2 bg-alea-600 text-white p-3 rounded-lg hover:bg-alea-700 transition-colors shadow-sm">
+                            <button onClick={handleGoogleLogin} disabled={isIframe} className="flex items-center justify-center gap-2 bg-alea-600 text-white p-3 rounded-lg hover:bg-alea-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
                                 <LogIn size={20} /> Connetti Google Drive
                             </button>
                         ) : (
