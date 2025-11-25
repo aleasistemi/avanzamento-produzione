@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { OPERATORI_DATA, MOCK_COMMESSE, MOCK_CLIENTI, MOCK_LOGS } from './constants';
 import { Operatore, Commessa, AIResponse, Cliente, FaseProduzione } from './types';
@@ -89,13 +90,14 @@ const App = () => {
       setClienti(newClients);
       setLogs(newLogs);
 
-      if (isGoogleConnected) {
+      // We rely on the service check directly for better reliability than state
+      if (isSignedIn()) {
           setIsSyncing(true);
           try {
               await saveAllData(newCommesse, newOps, newClients, newLogs);
           } catch(e) {
               console.error("Save Error", e);
-              alert("Errore salvataggio Cloud. Controlla la connessione.");
+              // alert("Errore salvataggio Cloud. Controlla la connessione.");
           } finally {
               setIsSyncing(false);
           }
@@ -217,10 +219,18 @@ const App = () => {
         setLoginError(true);
         return;
     }
+    
+    // Simple mock password check logic (demo purpose)
+    const isAdminUser = loginSelection === "4" || loginSelection === "12" || loginSelection === "13"; // IDs for admins
+    const correctPass = isAdminUser ? "14091111" : "1409";
+
+    if (passwordInput !== correctPass) {
+        setLoginError(true);
+        return;
+    }
 
     const user = operators.find(op => op.ID.toString() === loginSelection);
     if (user) {
-        // Accept any password since we are using mock auth for this demo
         setCurrentUser(user);
         setLoginError(false);
         setPasswordInput("");
@@ -277,7 +287,7 @@ const App = () => {
                             onChange={(e) => setPasswordInput(e.target.value)}
                         />
                     </div>
-                    {loginError && <p className="text-xs text-red-500 mt-1">Password non corretta. Riprova.</p>}
+                    {loginError && <p className="text-xs text-red-500 mt-1">Password non corretta. (1409 o 14091111 per Admin)</p>}
                 </div>
             )}
 
