@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Operatore, Cliente } from '../types';
 import { X, Plus, Trash2, Save, Settings, Users, Building, Pencil, Cloud, LogIn, Database, RefreshCw } from 'lucide-react';
@@ -50,12 +51,12 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
           onManualSync();
       } catch (e: any) {
           console.error("Login Error UI", e);
-          let msg = "Errore sconosciuto.";
+          let msg = "Errore durante il login.";
           if (e.error) msg = e.error;
           else if (e.message) msg = e.message;
           else if (typeof e === 'string') msg = e;
           
-          alert(`Login fallito: ${msg}\n\nNota: Se vedi 'idpiframe_initialization_failed', verifica le Origini Autorizzate su Google Cloud Console.`);
+          alert(`Errore: ${msg}\n\nNota: Assicurati che l'URL sia aggiunto in 'Origini JavaScript autorizzate' su Google Cloud Console.`);
       }
   };
 
@@ -70,7 +71,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
             await initializeSheetHeaders();
             alert("Intestazioni create correttamente!");
           } catch(e) {
-              alert("Errore inizializzazione intestazioni");
+              alert("Errore inizializzazione intestazioni. Sei connesso?");
           }
       }
   }
