@@ -5,37 +5,41 @@ let gapiInited = false;
 let gapiInstance: any = null;
 
 export const initGapi = async () => {
-  if (gapiInited && (window as any).gapi) return true;
+  if (gapiInited && (window as any).gapi && (window as any).gapi.auth2) return true;
 
   return new Promise((resolve, reject) => {
-    const initializeClient = () => {
-      (window as any).gapi.load('client:auth2', async () => {
-        try {
-          await (window as any).gapi.client.init({
-            apiKey: GOOGLE_API_KEY,
-            clientId: GOOGLE_CLIENT_ID,
-            discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],
-            scope: SCOPES,
-          });
-          gapiInstance = (window as any).gapi.auth2.getAuthInstance();
-          gapiInited = true;
-          resolve(true);
-        } catch (error) {
-          console.error("Error initializing GAPI Client", error);
-          reject(error);
-        }
-      });
+    const initClient = async () => {
+      try {
+        await (window as any).gapi.client.init({
+          apiKey: GOOGLE_API_KEY,
+          clientId: GOOGLE_CLIENT_ID,
+          discoveryDocs: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],
+          scope: SCOPES,
+          plugin_name: "AleaProduction" // CRITICAL FIX for "Login Failed" errors
+        });
+        gapiInstance = (window as any).gapi.auth2.getAuthInstance();
+        gapiInited = true;
+        resolve(true);
+      } catch (error: any) {
+        console.error("Error initializing GAPI Client:", error);
+        // Extract specific error details if available
+        const errorMsg = error.details || error.error || JSON.stringify(error);
+        reject(new Error(`GAPI Init Failed: ${errorMsg}`));
+      }
     };
 
     if ((window as any).gapi) {
-      initializeClient();
+      (window as any).gapi.load('client:auth2', initClient);
     } else {
       const script = document.createElement('script');
       script.src = 'https://apis.google.com/js/api.js';
-      script.onload = initializeClient;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => {
+        (window as any).gapi.load('client:auth2', initClient);
+      };
       script.onerror = (e) => {
-        console.error("Failed to load GAPI script", e);
-        reject(new Error("Failed to load Google API script"));
+        reject(new Error("Failed to load Google API script. Check your connection."));
       };
       document.body.appendChild(script);
     }
@@ -83,7 +87,7 @@ const commessaToRow = (c: Commessa) => [
     c.CommessaID, c.Codice, c.Cliente, c.Categoria, c.Priorita, c.DataStimataConsegna,
     c.OperatoreAssegnato, c.RepartoResponsabile, c.StatoAvanzamento, c.DataInserimento,
     c.DataPresaInCarico, c.DataFinePrevista, c.MaterialiMancanti, c.NoteTecniche,
-    c.TempoStimatoOre, c.StatoCompletamento, c.ColoreCalcolato, c.Bloccata
+    c.TempoStimatoOre, c.StatoCompletamento, c.ColoreCalcolato, c.Bloccata ? 'TRUE' : 'FALSE'
 ];
 
 const rowToOperatore = (row: any[]): Operatore => ({
@@ -124,8 +128,19 @@ const logToRow = (l: FaseProduzione) => [
 // --- API ACTIONS ---
 
 export const fetchAllData = async () => {
+    // Retry logic specifically for GAPI not ready
+    if (!gapiInstance) {
+        try {
+            await initGapi();
+        } catch (e) {
+            console.error("Auto-init failed during fetch", e);
+            // Fallback to empty if init fails hard
+            return { commesse: [], operatori: [], clienti: [], logs: [] };
+        }
+    }
+
     if (!isSignedIn()) {
-      console.warn("Attempted to fetch data while not signed in.");
+      console.warn("User not signed in, skipping fetch.");
       return { commesse: [], operatori: [], clienti: [], logs: [] };
     }
     
